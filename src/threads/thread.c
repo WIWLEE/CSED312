@@ -230,15 +230,6 @@ thread_block (void)
   schedule ();
 }
 
-bool priority_less_function(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
-{
-  int priority_a = list_entry(a, struct thread, elem)->priority;
-  int priority_b = list_entry(b, struct thread, elem)->priority;
-
-  if(priority_a > priority_b) return true;
-  else return false;
-}
-
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
