@@ -88,7 +88,7 @@ struct donating_thread
    struct lock* donator_lock; // donation을 만들게 하는 lock이다.
 
    struct list_elem elem; // list.c를 사용하기 위해 만든 것이다.
-}
+};
 
 struct thread
   {
