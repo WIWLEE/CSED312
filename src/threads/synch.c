@@ -32,6 +32,10 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+
+bool 
+sema_priority_less_function(struct list_elem *a, struct list_elem *b, void *aux);
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -69,7 +73,7 @@ sema_down (struct semaphore *sema)
   while (sema->value == 0) 
     {
       //list_push_back (&sema->waiters, &thread_current ()->elem);
-      list_insert_ordered(&sema->waiters, &thread_current()->elem, priority_less_function ,0); 
+      list_insert_ordered(&sema->waiters, &thread_current()->elem, donating_priority_less_function ,0); 
       // semaphore의 waiters에 해당하는 thread들도 그들의 priority 순서대로 넣어야 한다.
       thread_block ();
     }
@@ -341,4 +345,16 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 
   while (!list_empty (&cond->waiters))
     cond_signal (cond, lock);
+}
+
+/*semaphore와 lock에서는 waiters들이 해당 lock을 기다리는 threads들이다. 이때, 이 thread들은 priority를 donation할 수 있어야 한다.
+따라서, */
+bool 
+donating_priority_less_function(struct list_elem *a, struct list_elem *b, void *aux)
+{
+  int priority_a = list_entry(a, struct donating_thread, elem)->donator_priority;
+  int priority_b = list_entry(b, struct donating_thread, elem)->donator_priority;
+
+  if(priority_a > priority_b) return true;
+  else return false;
 }

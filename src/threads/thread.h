@@ -156,14 +156,5 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-bool priority_less_function(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
-{
-  int priority_a = list_entry(a, struct thread, elem)->priority;
-  int priority_b = list_entry(b, struct thread, elem)->priority;
-
-  if(priority_a > priority_b) return true;
-  else return false;
-}
-
 
 #endif /* threads/thread.h */

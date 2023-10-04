@@ -72,9 +72,12 @@ void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
 ////////new var///////
-bool priority_less_function(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 int now_priority;
+
+bool 
+priority_less_function(struct list_elem *a, struct list_elem *b, void *aux);
+
 
 ////////////////////////////////
 
@@ -618,6 +621,17 @@ allocate_tid (void)
 
   return tid;
 }
+
+bool 
+priority_less_function(struct list_elem *a, struct list_elem *b, void *aux)
+{
+  int priority_a = list_entry(a, struct thread, elem)->priority;
+  int priority_b = list_entry(b, struct thread, elem)->priority;
+
+  if(priority_a > priority_b) return true;
+  else return false;
+}
+
 
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
