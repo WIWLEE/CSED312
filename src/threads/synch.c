@@ -32,6 +32,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+#include "threads/palloc.h"
 
 bool 
 sema_priority_less_function(struct list_elem *a, struct list_elem *b, void *aux);
@@ -73,7 +74,7 @@ sema_down (struct semaphore *sema)
   while (sema->value == 0) 
     {
       //list_push_back (&sema->waiters, &thread_current ()->elem);
-      list_insert_ordered(&sema->waiters, &thread_current()->elem, donating_priority_less_function ,0); 
+      list_insert_ordered(&sema->waiters, &thread_current()->elem, priority_less_function ,0); 
       // semaphore의 waiters에 해당하는 thread들도 그들의 priority 순서대로 넣어야 한다.
       thread_block ();
     }
@@ -205,6 +206,57 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+    
+  struct thread* lockowner = lock->holder;
+  struct thread* cur = thread_current();
+  
+  struct lock* uplock = lock;
+
+  //lock을 acquire할 때, 해당 lock의 holder가 이미 있는지 확인하여야 한다.
+  if(lockowner != NULL)
+  {
+    cur->mylock = lock; // 현재 thread(얘가 lock을 acquire한다)는 lock을 기다리고 있다 ㅜㅜ
+  }
+
+    while(lockowner != NULL && lockowner->priority < cur->priority)
+    {
+      lockowner->priority = cur->priority; //같게 해 주어야 하는 것 같은데, 이러면, thread.c의 ready_list 감지 부분을 수정해 주어야 한다.
+      bool priority_already_changed = false;
+
+      //lockowner의 priority를 올려주고, lockowner->donating_info_list에 저장한다.
+      if(!list_empty(&lockowner->donating_info_list))
+      {
+        struct list_elem* e;
+
+        //donating_info_list에 무작정 donating_info를 추가하게 되면 문제가 발생한다. // 그림 참조
+        for (e = list_begin(&lockowner->donating_info_list); e!= list_end(&lockowner->donating_info_list); e = list_next(e))
+        { // donating_info들은 각각 priority와 lock이 있다.
+          if(list_entry(e, struct donating_info, elem)->donator_lock == uplock)
+          {
+            list_entry(e, struct donating_info, elem)->donator_priority = cur->priority;
+            priority_already_changed = true;
+            break;
+          }
+        }
+      }
+
+      if(!priority_already_changed)
+      {
+        struct donating_info *i = palloc_get_page (PAL_ZERO);
+        i->donator_lock = uplock;
+        i->donator_priority = cur->priority;
+        list_insert_ordered(&lockowner->donating_info_list, &i->elem, donating_priority_less_function,NULL); // donating_priority가 큰 순서대로 넣는다.
+      }
+
+      if(cur->mylock != NULL)
+      {
+        uplock = cur->mylock;
+        cur = cur->mylock->holder;
+      }
+    }
+
+  //ready_list sort//
+
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
 }
@@ -239,6 +291,35 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
+
+  struct thread* cur;
+  struct list_elem* e;
+
+  //위 lock에서 donate받은 priority를 삭제한다.
+  for (e = list_begin(&cur->donating_info_list); e!= list_end(&cur->donating_info_list); e = list_next(e))
+  {
+    if(list_entry(e,struct donating_info,elem)->donator_lock == lock)
+    {//lock들은 중복되지 않아 하나만 삭제하면 된다.
+      list_remove(e);
+      break;
+    }
+  }
+
+  if(list_empty(&cur->donating_info_list))
+  {
+    cur->priority = cur->original_priority;
+  }
+  else
+  {
+    //cur의 donating_info에서 첫번째 원소를 빼내면 된다.
+    int other_priority = list_front(&cur->donating_info_list);
+    if(other_priority > cur->original_priority)
+    {
+      cur->priority = other_priority;
+    }
+    else
+      cur->priority = cur->original_priority;
+  }
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
@@ -352,8 +433,8 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 bool 
 donating_priority_less_function(struct list_elem *a, struct list_elem *b, void *aux)
 {
-  int priority_a = list_entry(a, struct donating_thread, elem)->donator_priority;
-  int priority_b = list_entry(b, struct donating_thread, elem)->donator_priority;
+  int priority_a = list_entry(a, struct donating_info, elem)->donator_priority;
+  int priority_b = list_entry(b, struct donating_info, elem)->donator_priority;
 
   if(priority_a > priority_b) return true;
   else return false;

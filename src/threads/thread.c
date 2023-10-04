@@ -75,9 +75,6 @@ static tid_t allocate_tid (void);
 
 int now_priority;
 
-bool 
-priority_less_function(struct list_elem *a, struct list_elem *b, void *aux);
-
 
 ////////////////////////////////
 
@@ -503,12 +500,15 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
   t->original_priority = priority;
-  list_init(&t->donating_thread); // list도 초기화해준다.
+  list_init(&t->donating_info_list); // list도 초기화해준다.
+  list_init(&t->mylock);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
-  //list_insert_ordered(&ready_list, &t->elem, priority_less_function, NULL);
+
+  //list_insert_ordered(&ready_list, &t->elem, priority_less_function, NULL); 실수
   intr_set_level (old_level);
+
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

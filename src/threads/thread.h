@@ -82,7 +82,7 @@ typedef int tid_t;
    blocked state is on a semaphore wait list. */
 
 //struct thread에 donate를 하고 있는 thread에 대한 정보이다.
-struct donating_thread 
+struct donating_info
 {
    int donator_priority; // donate될 가능성이 있는 priority이다.
    struct lock* donator_lock; // donation을 만들게 하는 lock이다.
@@ -114,7 +114,8 @@ struct thread
 
     /*added variables*/
     int original_priority; // 이 thread가 lock을 걸면, priority를 기부받아 lock을 release하고, 다시 원래 priority로 돌아가게 된다. 이때 돌아갈 priority이다.
-    struct list donating_thread;
+    struct list donating_info_list;
+    struct lock* mylock; // thread의 걸림돌이 되는 lock이다. 이 lock이 해제되기 전까지 thread는 실행될 수 없다.
 
 
 
@@ -151,10 +152,11 @@ void thread_foreach (thread_action_func *, void *);
 int thread_get_priority (void);
 void thread_set_priority (int);
 
+bool priority_less_function(struct list_elem *a, struct list_elem *b, void *aux);
+
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
-
 
 #endif /* threads/thread.h */
