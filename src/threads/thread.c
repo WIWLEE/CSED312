@@ -20,6 +20,11 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 
+
+/*blocked list implementation*/
+static struct list block_list;
+
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -91,6 +96,7 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
+  list_init(&block_list);
   list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
@@ -582,3 +588,33 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+//insert block list (used in timer.c)
+void insert_to_block_list (struct thread *t){
+  list_push_back(&block_list, &t->elem);
+  return;
+}
+
+//깨우는 함수
+void timer_awake (int64_t ticks)
+{
+  //block_list 들의 alarm_ticks가 현재 ticks보다 작아지면 그 thread를 unblock하고 list에서 내보내기
+  //단, block_list는 thread.c에 있으므로 timer.c가 아닌 thread.c에서 진행
+  
+  struct list_elem *tempElement = list_begin(&block_list);
+  struct thread *tempThread;
+  for(tempElement; tempElement!= list_end(&block_list);){ //for문으로 모든 blockList의 alarm_tick 확인
+    tempThread = list_entry(tempElement, struct thread, elem);
+    if(tempThread->alarm_tick < ticks){
+      list_remove(&tempThread->elem);
+
+      enum intr_level old_level = intr_disable (); //unblock 전에 intrrupt 설정
+      thread_unblock(tempThread);
+      intr_set_level(old_level); //unblock 후에 interrupt 재설정
+
+    }
+    tempElement = list_next(tempElement);
+  }
+
+
+}

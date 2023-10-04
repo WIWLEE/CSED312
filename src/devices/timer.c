@@ -89,11 +89,17 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
+  int64_t start = timer_ticks (); //불러진 시점의 틱수
+  ASSERT (intr_get_level () == INTR_ON); //interrupt must be turned on
 
-  ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  thread_current()->alarm_tick = start + ticks; //현재 스레드의 alarm_tick (일어나야 할 시간)을 정한다. 
+  insert_to_block_list(thread_current()); //현재 스레드를 block list 에 넣는다.
+
+  //다만 block 과정에서 interrupt는 꺼져있어야 하므로 잠깐만 끄자
+  enum intr_level old_level = intr_disable();
+  thread_block(); //block 
+  intr_set_level(old_level); 
+    
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -172,6 +178,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+  timer_awake(ticks);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
