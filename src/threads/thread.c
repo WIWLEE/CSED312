@@ -263,7 +263,7 @@ thread_unblock (struct thread *t)
   if(t->priority > now_priority)
   {
     //unblock할 thread인 t의 priority가 현재의 priority보다 높다면
-    schedule();
+    thread_yield();
     //우선순위는 앞에서 넣어줘서, 이미 정렬되어 있어서 괜찮다.
   }
 
@@ -364,9 +364,22 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  struct thread* cur = thread_current();
 
+  cur->original_priority = new_priority;
+
+  if(cur->priority == cur->original_priority || new_priority > cur->priority)
+  {//donation이 일어나지 않고 있거나, new priority가 donation받은 priority보다도 크다면
+    cur->priority = new_priority;
+  }
+  
   now_priority = new_priority;
+
+  //만약, now_priority가 ready_list의 가장 큰 priority보다 작으면, thread switching이 일어나야 한다.
+  if(!list_empty(&ready_list) && list_entry(list_front(&ready_list), struct thread, elem)->priority > cur->priority)
+  {
+    thread_yield();
+  }
 }
 
 /* Returns the current thread's priority. */
@@ -494,6 +507,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+
+  t->original_priority = priority;
+  list_init(&t->donating_thread); // list도 초기화해준다.
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

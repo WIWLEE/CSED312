@@ -80,6 +80,16 @@ typedef int tid_t;
    only because they are mutually exclusive: only a thread in the
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
+
+//struct thread에 donate를 하고 있는 thread에 대한 정보이다.
+struct donating_thread 
+{
+   int donator_priority; // donate될 가능성이 있는 priority이다.
+   struct lock* donator_lock; // donation을 만들게 하는 lock이다.
+
+   struct list_elem elem; // list.c를 사용하기 위해 만든 것이다.
+}
+
 struct thread
   {
     /* Owned by thread.c. */
@@ -89,6 +99,7 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
+
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -100,6 +111,13 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+
+    /*added variables*/
+    int original_priority; // 이 thread가 lock을 걸면, priority를 기부받아 lock을 release하고, 다시 원래 priority로 돌아가게 된다. 이때 돌아갈 priority이다.
+    struct list donating_thread;
+
+
+
   };
 
 /* If false (default), use round-robin scheduler.
