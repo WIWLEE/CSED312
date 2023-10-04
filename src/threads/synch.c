@@ -322,7 +322,8 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
-   LOCK).  LOCK must be held before calling this function.
+   LOCK)
+   .  LOCK must be held before calling this function.
 
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to signal a condition variable within an

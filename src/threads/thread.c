@@ -71,6 +71,13 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+////////new var///////
+bool priority_less_function(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
+int now_priority;
+
+////////////////////////////////
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -98,6 +105,9 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+
+  ///
+  now_priority = initial_thread->priority;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -220,6 +230,15 @@ thread_block (void)
   schedule ();
 }
 
+bool priority_less_function(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  int priority_a = list_entry(a, struct thread, elem)->priority;
+  int priority_b = list_entry(b, struct thread, elem)->priority;
+
+  if(priority_a > priority_b) return true;
+  else return false;
+}
+
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
@@ -237,8 +256,17 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  //list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem, priority_less_function, NULL);
   t->status = THREAD_READY;
+
+  if(t->priority > now_priority)
+  {
+    //unblock할 thread인 t의 priority가 현재의 priority보다 높다면
+    schedule();
+    //우선순위는 앞에서 넣어줘서, 이미 정렬되어 있어서 괜찮다.
+  }
+
   intr_set_level (old_level);
 }
 
@@ -308,7 +336,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    //list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, priority_less_function, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -336,6 +365,8 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
+
+  now_priority = new_priority;
 }
 
 /* Returns the current thread's priority. */
@@ -466,6 +497,7 @@ init_thread (struct thread *t, const char *name, int priority)
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
+  //list_insert_ordered(&ready_list, &t->elem, priority_less_function, NULL);
   intr_set_level (old_level);
 }
 
@@ -521,6 +553,7 @@ thread_schedule_tail (struct thread *prev)
 
   /* Mark us as running. */
   cur->status = THREAD_RUNNING;
+  now_priority = cur->priority;
 
   /* Start new time slice. */
   thread_ticks = 0;
