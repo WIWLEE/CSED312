@@ -35,7 +35,7 @@
 #include "threads/palloc.h"
 
 bool 
-sema_priority_less_function(struct list_elem *a, struct list_elem *b, void *aux);
+donating_priority_less_function(struct list_elem *a, struct list_elem *b, void *aux);
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for

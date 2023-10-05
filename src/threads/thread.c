@@ -251,7 +251,7 @@ thread_unblock (struct thread *t)
   list_insert_ordered(&ready_list, &t->elem, priority_less_function, NULL);
   t->status = THREAD_READY;
 
-  if(t->priority > now_priority)
+  if(t->priority > thread_current()->priority)
   {
     //unblock할 thread인 t의 priority가 현재의 priority보다 높다면
     thread_yield();
