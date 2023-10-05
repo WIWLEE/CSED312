@@ -505,8 +505,6 @@ init_thread (struct thread *t, const char *name, int priority)
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
-
-  //list_insert_ordered(&ready_list, &t->elem, priority_less_function, NULL); 실수
   intr_set_level (old_level);
 
 }
