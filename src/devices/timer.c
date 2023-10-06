@@ -190,7 +190,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
 
     if(ticks % TIMER_FREQ == 0){
       //1초마다 모든 priority, recent_cpu 업데이트, load_avg 업데이트
-      mlfqs_set_load_avg();
+      thread_set_load_avg();
       mlfqs_set_all_recent_cpu();
       mlfqs_set_all_priority();
     }
