@@ -437,14 +437,14 @@ thread_get_recent_cpu (void)
 
 //모든 스레드에 대해 priority 업데이트
 void mlfqs_set_all_priority(){
-  for(struct list_elem* e = list_begin(&all_list); e != list_back(&all_list); e = list_next(e)){
+  for(struct list_elem* e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
     mlfqs_thread_set_priority(list_entry(e, struct thread, elem));
   }
 }
 
 //모든 스레드에 대해 recent_cpu 업데이트
 void mlfqs_set_all_recent_cpu(){
-  for(struct list_elem* e = list_begin(&all_list); e != list_back(&all_list); e = list_next(e)){
+  for(struct list_elem* e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
      thread_set_recent_cpu(list_entry(e, struct thread, elem));
   }
 }
