@@ -93,6 +93,10 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+   //nice, recent_cpu 추가
+    int nice;
+    int recent_cpu;
+
     int64_t alarm_tick;
 
 #ifdef USERPROG
@@ -134,12 +138,22 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+void mlfqs_thread_set_priority(struct thread* t); //추가
 
 int thread_get_nice (void);
 void thread_set_nice (int);
+
 int thread_get_recent_cpu (void);
+void thread_set_recent_cpu(struct thread* t); //추가
+
 int thread_get_load_avg (void);
+void thread_set_load_avg (); //추가
+
+void mlfqs_set_all_priority(); //추가
+void mlfqs_set_all_recent_cpu(); //추가
+int ft_to_int(int x); //추가
 
 void insert_to_block_list (struct thread *t);
+void mlfqs_priority_update(struct thread *t);
 
 #endif /* threads/thread.h */

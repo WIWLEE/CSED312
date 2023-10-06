@@ -171,7 +171,7 @@ timer_print_stats (void)
 {
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
@@ -179,6 +179,28 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
   timer_awake(ticks);
+
+
+  if(thread_mlfqs == true){
+    //mlfqs
+    int32_t f = 1 << 14;
+
+    //recent_cpu 업데이트
+    thread_current()->recent_cpu = thread_current()->recent_cpu + 1*f;
+
+    if(ticks % TIMER_FREQ == 0){
+      //1초마다 모든 priority, recent_cpu 업데이트, load_avg 업데이트
+      mlfqs_set_load_avg();
+      mlfqs_set_all_recent_cpu();
+      mlfqs_set_all_priority();
+    }
+    else if (ticks % 4 == 0){
+      //4 tick마다 모든 priority update
+      mlfqs_set_all_priority();
+    }
+  }
+
+
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

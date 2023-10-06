@@ -21,6 +21,9 @@
 #define THREAD_MAGIC 0xcd6abf4b
 
 
+//전역변수 load_avg
+int load_avg = 0;
+
 /*blocked list implementation*/
 static struct list block_list;
 
@@ -340,48 +343,127 @@ thread_foreach (thread_action_func *func, void *aux)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
-{
-  thread_current ()->priority = new_priority;
+{ 
+  if (!thread_mlfqs){
+    struct thread* t = thread_current();
+    t->priority = new_priority;
+  }
+ 
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
+  struct thread* t = thread_current();
+  return t->priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+  thread_current()->nice = nice;
+  mlfqs_thread_set_priority(thread_current()); //nice로 인해 변경되었을 Priority 갱신
+  int current_priority = thread_current()->priority;
+
+  //현재 우선순위보다 큰 스레드가 존재하면 양보하자 
+  if(list_entry(list_front(&ready_list), struct thread, elem)->priority > current_priority){
+      thread_yield();
+  }
+}
+
+//mlfqs -> priority 업데이트
+void mlfqs_thread_set_priority(struct thread* t){
+  
+  int32_t f = 1 << 14;
+
+  int32_t fp_recent_cpu = t->recent_cpu * f;
+  int32_t fp_nice = t->nice * f;
+
+  //우선순위 재설정
+  int temp = PRI_MAX * f - ((fp_recent_cpu)/4) - (fp_nice * 2); //convert to fp and calculate
+  t->priority = ft_to_int(temp);
+  
+  return;
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  struct thread* t = thread_current();
+  return t->nice;
 }
+
+//mlfqs -> load_avg 전역변수 업데이트
+void thread_set_load_avg (){
+
+  int32_t f = 1 << 14;
+  int ready_threads = list_size(&ready_list);
+  load_avg = ((int64_t)(59 * f/60) * load_avg)/f + (1 * f / 60) * ready_threads;
+
+}
+
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return ft_to_int(load_avg * 100);
+}
+
+//mlfqs -> recent_cpu 업데이트
+void 
+thread_set_recent_cpu(struct thread* t){
+  
+  int32_t f =  1<<14;
+  int temp1 = 2 * load_avg;
+  int temp2 = 2 * load_avg + 1*f;
+  int temp3 = t->recent_cpu;
+  int temp4 = t->nice;
+
+  t->recent_cpu = ((int64_t)(((int64_t)temp1 * temp2)/f) * temp3)/f + temp4;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  struct thread* t = thread_current();
+  int temp = t->recent_cpu * 100;
+  return ft_to_int(temp);
 }
-
+
+//모든 스레드에 대해 priority 업데이트
+void mlfqs_set_all_priority(){
+  for(struct list_elem* e = list_begin(&all_list); e != list_back(&all_list); e = list_next(e)){
+    mlfqs_thread_set_priority(list_entry(e, struct thread, elem));
+  }
+}
+
+//모든 스레드에 대해 recent_cpu 업데이트
+void mlfqs_set_all_recent_cpu(){
+  for(struct list_elem* e = list_begin(&all_list); e != list_back(&all_list); e = list_next(e)){
+     thread_set_recent_cpu(list_entry(e, struct thread, elem));
+  }
+}
+
+//ft_to_int
+int ft_to_int(int x){
+
+  int f = 1 << 14;
+
+  if(x >= 0){
+    return (x+f/2)/f;
+  }
+  else if(x<0){
+    return (x-f/2)/f;
+  }
+
+}
+
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -430,7 +512,7 @@ kernel_thread (thread_func *function, void *aux)
   function (aux);       /* Execute the thread function. */
   thread_exit ();       /* If function() returns, kill the thread. */
 }
-
+
 /* Returns the running thread. */
 struct thread *
 running_thread (void) 
@@ -469,6 +551,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+
+  //초기화 0
+  t->nice = 0;
+  t->recent_cpu = 0;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -584,15 +670,17 @@ allocate_tid (void)
 
   return tid;
 }
-
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
 //insert block list (used in timer.c)
 void insert_to_block_list (struct thread *t){
+
   list_push_back(&block_list, &t->elem);
   return;
+
 }
 
 //깨우는 함수
