@@ -251,7 +251,7 @@ thread_unblock (struct thread *t)
   list_insert_ordered(&ready_list, &t->elem, priority_less_function, NULL);
   t->status = THREAD_READY;
 
-  if(t->priority > thread_current()->priority)
+  if(t->priority >= thread_current()->priority)
   {
     //unblock할 thread인 t의 priority가 현재의 priority보다 높다면
     thread_yield();
@@ -357,13 +357,12 @@ thread_set_priority (int new_priority)
 {
   struct thread* cur = thread_current();
 
-  cur->original_priority = new_priority;
-
+  
   if(cur->priority == cur->original_priority || new_priority > cur->priority)
   {//donation이 일어나지 않고 있거나, new priority가 donation받은 priority보다도 크다면
     cur->priority = new_priority;
   }
-  
+  cur->original_priority = new_priority;
   now_priority = new_priority;
 
   //만약, now_priority가 ready_list의 가장 큰 priority보다 작으면, thread switching이 일어나야 한다.
