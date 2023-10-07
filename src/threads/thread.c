@@ -261,13 +261,13 @@ thread_unblock (struct thread *t)
   list_insert_ordered(&ready_list, &t->elem, priority_less_function, NULL);
   t->status = THREAD_READY;
 
-  /*
-  if(t->priority > thread_current()->priority)
+  
+  if(thread_current()!=idle_thread && t->priority > thread_current()->priority)
   {
     //unblock할 thread인 t의 priority가 현재의 priority보다 높다면
     thread_yield();
     //우선순위는 앞에서 넣어줘서, 이미 정렬되어 있어서 괜찮다.
-  }*/
+  }
 
   intr_set_level (old_level);
 }
