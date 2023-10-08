@@ -115,7 +115,7 @@ struct thread
     /*added variables*/
     int original_priority; // 이 thread가 lock을 걸면, priority를 기부받아 lock을 release하고, 다시 원래 priority로 돌아가게 된다. 이때 돌아갈 priority이다.
     struct list donating_info_list;
-    struct lock* mylock; // thread의 걸림돌이 되는 lock이다. 이 lock이 해제되기 전까지 thread는 실행될 수 없다.
+    struct lock* waitlock; // thread의 걸림돌이 되는 lock이다. 이 lock이 해제되기 전까지 thread는 실행될 수 없다.
 
 
 
@@ -158,5 +158,8 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+void sort_ready_list(void);
+void print_ready_list(void);
 
 #endif /* threads/thread.h */

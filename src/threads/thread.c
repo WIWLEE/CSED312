@@ -209,8 +209,9 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
   /* Add to run queue. */
-  //thread_unblock (t);
+  thread_unblock (t);
 
+  /*
   if(t->priority > thread_current()->priority)
   {
     //unblock할 thread인 t의 priority가 현재의 priority보다 높다면
@@ -219,7 +220,7 @@ thread_create (const char *name, int priority,
   else
   {
     thread_unblock(t);
-  }
+  }*/
 
   return tid;
 }
@@ -261,8 +262,9 @@ thread_unblock (struct thread *t)
   list_insert_ordered(&ready_list, &t->elem, priority_less_function, NULL);
   t->status = THREAD_READY;
 
-  
-  if(thread_current()!=idle_thread && t->priority > thread_current()->priority)
+  struct thread* ready_top = list_entry(list_front(&ready_list), struct thread, elem);
+
+  if(thread_current()!=idle_thread && ready_top->priority > thread_current()->priority)
   {
     //unblock할 thread인 t의 priority가 현재의 priority보다 높다면
     thread_yield();
@@ -511,7 +513,7 @@ init_thread (struct thread *t, const char *name, int priority)
 
   t->original_priority = priority;
   list_init(&t->donating_info_list); // list도 초기화해준다.
-  list_init(&t->mylock);
+  lock_init(&t->waitlock);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -638,6 +640,31 @@ priority_less_function(struct list_elem *a, struct list_elem *b, void *aux)
 
   if(priority_a > priority_b) return true;
   else return false;
+}
+
+void sort_ready_list()
+{
+  list_sort(&ready_list, priority_less_function, NULL);
+}
+
+void print_ready_list()
+{
+  if(list_empty(&ready_list))
+    printf("empty list\n");
+   for (struct list_elem* e = list_begin(&ready_list); e!= list_end(&ready_list); e = list_next(e))
+      { 
+        printf("name: %s // priority: %d\n", list_entry(e, struct thread, elem)->name, list_entry(e, struct thread, elem)->priority);
+      }
+}
+
+void print_all_list()
+{
+  if(list_empty(&all_list))
+    printf("empty all list\n");
+   for (struct list_elem* e = list_begin(&all_list); e!= list_end(&all_list); e = list_next(e))
+      { 
+        printf("name: %s // priority: %d\n", list_entry(e, struct thread, allelem)->name, list_entry(e, struct thread, allelem)->priority);
+      }
 }
 
 

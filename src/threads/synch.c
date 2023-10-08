@@ -34,8 +34,10 @@
 
 #include "threads/palloc.h"
 
+
 bool 
 donating_priority_less_function(struct list_elem *a, struct list_elem *b, void *aux);
+
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
@@ -120,12 +122,16 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
+  sema->value++;
+
   if (!list_empty (&sema->waiters)) 
   {
+    list_sort(&sema->waiters,priority_less_function,NULL);
+
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
   }
-  sema->value++;
+  
   intr_set_level (old_level);
 }
 
@@ -209,52 +215,55 @@ lock_acquire (struct lock *lock)
   struct thread* lockowner = lock->holder;
   struct thread* cur = thread_current();
   
-  struct lock* uplock = lock;
+  struct lock* tmp = lock;
 
   //lock을 acquire할 때, 해당 lock의 holder가 이미 있는지 확인하여야 한다.
   if(lockowner != NULL)
   {
-    cur->mylock = lock; // 현재 thread(얘가 lock을 acquire한다)는 lock을 기다리고 있다 ㅜㅜ
+    cur->waitlock = lock; // 현재 thread(얘가 lock을 acquire한다)는 lock을 기다리고 있다 ㅜㅜ
   }
 
-    while(lockowner != NULL && lockowner->priority < cur->priority)
+  while(lockowner != NULL && lockowner->priority < cur->priority)
+  {
+    lockowner->priority = cur->priority;  
+    bool priority_already_changed = false;
+
+    //lockowner의 priority를 올려주고, lockowner->donating_info_list에 저장한다.
+    if(!list_empty(&lockowner->donating_info_list))
     {
-      lockowner->priority = cur->priority; //같게 해 주어야 하는 것 같은데, 이러면, thread.c의 ready_list 감지 부분을 수정해 주어야 한다.
-      bool priority_already_changed = false;
+      struct list_elem* e;
 
-      //lockowner의 priority를 올려주고, lockowner->donating_info_list에 저장한다.
-      if(!list_empty(&lockowner->donating_info_list))
-      {
-        struct list_elem* e;
-
-        //donating_info_list에 무작정 donating_info를 추가하게 되면 문제가 발생한다. // 그림 참조
-        for (e = list_begin(&lockowner->donating_info_list); e!= list_end(&lockowner->donating_info_list); e = list_next(e))
-        { // donating_info들은 각각 priority와 lock이 있다.
-          if(list_entry(e, struct donating_info, elem)->donator_lock == uplock)
-          {
-            list_entry(e, struct donating_info, elem)->donator_priority = cur->priority;
-            priority_already_changed = true;
-            break;
-          }
+      //donating_info_list에 무작정 donating_info를 추가하게 되면 문제가 발생한다. // 그림 참조
+      for (e = list_begin(&lockowner->donating_info_list); e!= list_end(&lockowner->donating_info_list); e = list_next(e))
+      { // donating_info들은 각각 priority와 lock이 있다.
+      //lock의 owner가 받은 donating info에 대해서 
+        if(list_entry(e, struct donating_info, elem)->donator_lock == tmp)
+        {
+          list_entry(e, struct donating_info, elem)->donator_priority = cur->priority;
+          priority_already_changed = true;
+          break;
         }
-      }
 
-      if(!priority_already_changed)
-      {
-        struct donating_info *i = palloc_get_page (PAL_ZERO);
-        i->donator_lock = uplock;
-        i->donator_priority = cur->priority;
-        list_insert_ordered(&lockowner->donating_info_list, &i->elem, donating_priority_less_function,NULL); // donating_priority가 큰 순서대로 넣는다.
-      }
-
-      if(cur->mylock != NULL)
-      {
-        uplock = cur->mylock;
-        cur = cur->mylock->holder;
       }
     }
 
+    if(!priority_already_changed)
+    {
+      struct donating_info *i = palloc_get_page (PAL_ZERO);
+      i->donator_lock = tmp;
+      i->donator_priority = cur->priority;
+      list_insert_ordered(&lockowner->donating_info_list, &i->elem, donating_priority_less_function,NULL); // donating_priority가 큰 순서대로 넣는다.
+    }
+
+    if(cur->waitlock != NULL)
+    {
+      tmp = cur->waitlock;
+      cur = cur->waitlock->holder;
+    }
+  }
+
   //ready_list sort//
+  sort_ready_list();
 
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
@@ -280,6 +289,13 @@ lock_try_acquire (struct lock *lock)
   return success;
 }
 
+
+bool compare_donating_priority(struct list_elem *e1, struct list_elem *e2, void *aux UNUSED)
+{
+  int p1 = list_entry(e1,struct donating_info, elem)->donator_priority;
+  int p2 =list_entry(e2,struct donating_info, elem)->donator_priority;
+  return p1<p2;
+}
 /* Releases LOCK, which must be owned by the current thread.
 
    An interrupt handler cannot acquire a lock, so it does not
@@ -288,10 +304,13 @@ lock_try_acquire (struct lock *lock)
 void
 lock_release (struct lock *lock) 
 {
+
+  
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
-  struct thread* cur;
+  struct thread* cur = thread_current();
+
   struct list_elem* e;
 
   //위 lock에서 donate받은 priority를 삭제한다.
@@ -303,23 +322,24 @@ lock_release (struct lock *lock)
       break;
     }
   }
-
-  if(list_empty(&cur->donating_info_list))
+  
+   if(list_empty(&cur->donating_info_list))
   {
     cur->priority = cur->original_priority;
   }
   else
   {
     //cur의 donating_info에서 첫번째 원소를 빼내면 된다.
-    int other_priority = list_front(&cur->donating_info_list);
-    if(other_priority > cur->original_priority)
+    struct list_elem* front = list_front(&cur->donating_info_list);
+    if(list_entry(front,struct donating_info,elem)->donator_priority > cur->original_priority)
     {
-      cur->priority = other_priority;
+      cur->priority = list_entry(front,struct donating_info,elem)->donator_priority;
     }
     else
       cur->priority = cur->original_priority;
   }
-
+  
+  
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }
@@ -411,8 +431,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
-   LOCK)
-   .  LOCK must be held before calling this function.
+   LOCK).  LOCK must be held before calling this function.
 
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to signal a condition variable within an
@@ -427,8 +446,6 @@ cond_broadcast (struct condition *cond, struct lock *lock)
     cond_signal (cond, lock);
 }
 
-/*semaphore와 lock에서는 waiters들이 해당 lock을 기다리는 threads들이다. 이때, 이 thread들은 priority를 donation할 수 있어야 한다.
-따라서, */
 bool 
 donating_priority_less_function(struct list_elem *a, struct list_elem *b, void *aux)
 {
