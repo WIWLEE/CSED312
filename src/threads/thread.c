@@ -536,9 +536,7 @@ thread_set_nice (int nice UNUSED)
 int
 thread_get_nice (void) 
 {
-  enum intr_level old_level = intr_disable ();
   int nice = thread_current()->nice;
-  intr_set_level(old_level);
   return nice;
 }
 
@@ -546,9 +544,7 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  enum intr_level old_level = intr_disable ();
   int avg = fp_to_int (load_avg * 100);
-  intr_set_level(old_level);
   return avg;
 }
 
@@ -556,11 +552,8 @@ thread_get_load_avg (void)
 int
 thread_get_recent_cpu (void) 
 {
-  enum intr_level old_level = intr_disable ();
 
   int recent = fp_to_int(thread_current ()->recent_cpu * 100);
-
-  intr_set_level(old_level);
   return recent;
 }
 
