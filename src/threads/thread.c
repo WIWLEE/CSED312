@@ -529,28 +529,39 @@ mlfqs_thread_set_all_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
-   thread_current()->nice = nice;
+  thread_current()->nice = nice;
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  return thread_current ()->nice;
+  enum intr_level old_level = intr_disable ();
+  int nice = thread_current()->nice;
+  intr_set_level(old_level);
+  return nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  return fp_to_int (load_avg * 100);
+  enum intr_level old_level = intr_disable ();
+  int avg = fp_to_int (load_avg * 100);
+  intr_set_level(old_level);
+  return avg;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  return fp_to_int(thread_current ()->recent_cpu * 100);
+  enum intr_level old_level = intr_disable ();
+
+  int recent = fp_to_int(thread_current ()->recent_cpu * 100);
+
+  intr_set_level(old_level);
+  return recent;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.

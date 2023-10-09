@@ -261,9 +261,6 @@ lock_acquire (struct lock *lock)
     }
   }
 
-  //ready_list sort//
-  //sort_ready_list();
-
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
 }
