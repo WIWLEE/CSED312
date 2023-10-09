@@ -58,7 +58,7 @@ sub set_part {
 # do_set_part($role, $source, $arg)
 #
 # Sets partition $role as coming from $source (one of 'file', 'from',
-# or 'size').  $arg is a file name for 'file' or 'from', a size in
+# or 'size'  $arg is a file name for 'file' or 'from', a size in
 # megabytes for 'size'.
 sub do_set_part {
     my ($role, $source, $arg) = @_;
@@ -359,7 +359,7 @@ sub cyl_sectors {
 # Makes sure that the loader is a reasonable size.
 sub read_loader {
     my ($name) = @_;
-    $name = find_file ("/home/pintos/pintos/src/threads/build/loader.bin") if !defined $name;
+    $name = find_file ("loader.bin") if !defined $name;
     die "Cannot find loader\n" if !defined $name;
 
     my ($handle);
