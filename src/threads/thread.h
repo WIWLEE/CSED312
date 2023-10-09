@@ -173,7 +173,6 @@ bool compare_priority (struct list_elem *a, struct list_elem *b, void *aux UNUSE
 
 void thread_alarm (int64_t ticks);
 void thread_sleep (int64_t ticks);
-void thread_preepmt (void);
 
 void mlfqs_thread_set_priority (struct thread *t);
 void mlfqs_thread_set_recent_cpu (struct thread *t);

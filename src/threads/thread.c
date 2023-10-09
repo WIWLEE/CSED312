@@ -804,14 +804,6 @@ void print_all_list()
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
 
-//if ready_list's the highest priority is bigger than current thread's priority, then yield
-void thread_preepmt (void)
-{
-  if (!list_empty (&ready_list) && list_entry (list_front (&ready_list), struct thread, elem)->priority > thread_current()->priority){
-    thread_yield();
-  };
-}
-
 //block list wake up
 void thread_alarm (int64_t ticks)
 {
