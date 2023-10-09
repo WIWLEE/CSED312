@@ -243,7 +243,6 @@ lock_acquire (struct lock *lock)
           priority_already_changed = true;
           break;
         }
-
       }
     }
 
@@ -331,6 +330,7 @@ lock_release (struct lock *lock)
   {
     //cur의 donating_info에서 첫번째 원소를 빼내면 된다.
     struct list_elem* front = list_front(&cur->donating_info_list);
+
     if(list_entry(front,struct donating_info,elem)->donator_priority > cur->original_priority)
     {
       cur->priority = list_entry(front,struct donating_info,elem)->donator_priority;
