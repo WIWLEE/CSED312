@@ -302,14 +302,13 @@ bool compare_donating_priority(struct list_elem *e1, struct list_elem *e2, void 
    handler. */
 void
 lock_release (struct lock *lock) 
-{ 
+{
+
+  
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
   struct thread* cur = thread_current();
-
-  lock->holder = NULL;
-  sema_up (&lock->semaphore);
 
   struct list_elem* e;
 
@@ -338,7 +337,11 @@ lock_release (struct lock *lock)
     }
     else
       cur->priority = cur->original_priority;
-  } 
+  }
+  
+  
+  lock->holder = NULL;
+  sema_up (&lock->semaphore);
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -414,9 +417,9 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-  list_push_back (&cond->waiters, &waiter.elem);
+  //list_push_back (&cond->waiters, &waiter.elem);
 
-  //list_insert_ordered (&cond->waiters, &waiter.elem, compare_sema_priority, NULL);
+  list_insert_ordered (&cond->waiters, &waiter.elem, compare_sema_priority, NULL);
 
   lock_release (lock);
   sema_down (&waiter.semaphore);
