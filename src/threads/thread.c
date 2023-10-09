@@ -289,6 +289,8 @@ thread_unblock (struct thread *t)
   list_insert_ordered(&ready_list, &t->elem, priority_less_function, NULL);
   t->status = THREAD_READY;
 
+  intr_set_level (old_level);
+
   struct thread* ready_top = list_entry(list_front(&ready_list), struct thread, elem);
 
   if(thread_current()!=idle_thread && ready_top->priority > thread_current()->priority)
@@ -298,7 +300,6 @@ thread_unblock (struct thread *t)
     //우선순위는 앞에서 넣어줘서, 이미 정렬되어 있어서 괜찮다.
   }
 
-  intr_set_level (old_level);
 }
 
 /* Returns the name of the running thread. */
@@ -646,6 +647,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
   t->original_priority = priority;
+  t->recent_cpu = 0;
+  t->nice = 0;
+  
   list_init(&t->donating_info_list); // list도 초기화해준다.
   lock_init(&t->waitlock);
 
