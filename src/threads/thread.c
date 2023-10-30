@@ -20,22 +20,6 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 
-int fp_to_int(int x){
-
-  int f = 1 << 14;
-
-  if(x >= 0){
-    return (x+f/2)/f;
-  }
-  else{
-    return (x-f/2)/f;
-  }
-
-}
-
-//추가한 리스트 => block list
-static struct list block_list;
-
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -74,7 +58,6 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
-int load_avg;
 
 static void kernel_thread (thread_func *, void *aux);
 
@@ -109,16 +92,12 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
-  list_init (&block_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
-
-  //전역 변수 초기화
-  load_avg = 0;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -167,14 +146,6 @@ thread_print_stats (void)
   printf ("Thread: %lld idle ticks, %lld kernel ticks, %lld user ticks\n",
           idle_ticks, kernel_ticks, user_ticks);
 }
-
-
-//alarm ticks compare -> to order insert to block list
-bool compare_alarm_ticks (struct list_elem *a, struct list_elem *b, void *aux UNUSED)
-{
-    return list_entry (a, struct thread, elem)->alarm_ticks < list_entry (b, struct thread, elem)->alarm_ticks;
-}
-
 
 /* Creates a new kernel thread named NAME with the given initial
    PRIORITY, which executes FUNCTION passing AUX as the argument,
@@ -266,7 +237,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_insert_ordered (&ready_list, &t->elem, compare_priority, NULL);
+  list_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -337,7 +308,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_insert_ordered (&ready_list, &cur->elem, compare_priority, NULL);
+    list_push_back (&ready_list, &cur->elem);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -364,11 +335,7 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  if (!thread_mlfqs){
-    thread_current ()->original_priority = new_priority;
-    thread_preepmt ();
-  }
-
+  thread_current ()->priority = new_priority;
 }
 
 /* Returns the current thread's priority. */
@@ -378,142 +345,35 @@ thread_get_priority (void)
   return thread_current ()->priority;
 }
 
-
-//mlfqs's priority set
-void
-mlfqs_thread_set_priority (struct thread *t)
-{
-  if (t != idle_thread){
-
-    int64_t f = (1<<14);
-  
-    int64_t temp1 = (t->recent_cpu / -4);
-    int64_t temp2 = PRI_MAX - (t->nice * 2);
-    int fp1 = temp2 * f;
-    int64_t temp3 = temp1 + fp1;
-    int64_t temp4 = fp_to_int(temp3);
-
-    if (temp4 > PRI_MAX) {
-      t->priority = PRI_MAX;
-    }
-    else if (temp4 < PRI_MIN) {
-      t->priority = PRI_MIN;
-    } else {
-      t->priority = temp4;
-    }
-  }
-}
-
-
-//mlfqs' recent_cpu set
-void mlfqs_thread_set_recent_cpu (struct thread *t)
-{ 
-  //idle_thread도 계산
-  int64_t f =  (1<<14);
-
-  int temp1 = 2 * load_avg;
-  int temp2 = 2 * load_avg + 1*f;
-  int temp3 = (((int64_t)temp1) * f /temp2);
-  int temp4 = (((int64_t)temp3) * (t->recent_cpu) / f);
-  int fp1 = t->nice * f;
-
-  t->recent_cpu = temp4 + fp1;
-   
-}
-
-//mlfqs current thread's recent_cpu + 1
-void mlfqs_thread_update_recent_cpu (void){
-
-  int f = (1<<14);
-
-  if(thread_current() != idle_thread){
-    thread_current()->recent_cpu = thread_current()->recent_cpu + 1*f;
-  }
-}
-
-//mlfqs' load_avg set
-void mlfqs_thread_set_load_avg (void)
-{
-  //idle_thread도 계산
-  int ready_threads = list_size (&ready_list);
-
-  if (thread_current () != idle_thread){ //idle_thread는 ready thread로 취급하지 않음 => 만약 현재 점유 스레드가 Idle이 아니라면 ready_thread로 포함시켜줌
-    ready_threads++;
-  } 
-    
-  int64_t f = 1 << 14;
-
-  int fp1 = 59 * f;
-  int fp2 = 1 * f;
- 
-  int64_t temp1 = fp1 / 60;
-  int64_t temp2 = fp2 / 60;
-  int64_t temp3 = (((int64_t)temp1) * load_avg /f);
-  int64_t temp4 = temp2 * ready_threads;
-  
-  load_avg = temp3 + temp4;
-}
-
-//all thread -> function set recent_cpu
-void mlfqs_thread_set_all_recent_cpu (void)
-{
-  struct list_elem *e;
-  struct thread *t;
-
-  for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)) {
-    t = list_entry (e, struct thread, allelem);
-    mlfqs_thread_set_recent_cpu (t);
-  }
-}
-
-//priority compare -> to determine yield or not
-bool compare_priority (struct list_elem *a, struct list_elem *b, void *aux UNUSED)
-{
-    return list_entry (a, struct thread, elem)->priority > list_entry (b, struct thread, elem)->priority;
-}
-
-
-//all thread -> function set priority
-void 
-mlfqs_thread_set_all_priority (void)
-{
-  struct list_elem *e;
-  struct thread *t;
-
-  for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)) {
-    t = list_entry (e, struct thread, allelem);
-    mlfqs_thread_set_priority (t);
-  }
-
-  list_sort (&ready_list, compare_priority, NULL);
-}
-
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice UNUSED) 
 {
-  thread_current()->nice = nice;
+  /* Not yet implemented. */
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  return thread_current ()->nice;
+  /* Not yet implemented. */
+  return 0;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  return fp_to_int (load_avg * 100);
+  /* Not yet implemented. */
+  return 0;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  return fp_to_int(thread_current ()->recent_cpu * 100);
+  /* Not yet implemented. */
+  return 0;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -603,11 +463,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-  
-  t->original_priority = priority;
-  t->recent_cpu = 0;
-  t->nice = 0;
-  
+
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
@@ -682,7 +538,7 @@ thread_schedule_tail (struct thread *prev)
   if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread) 
     {
       ASSERT (prev != cur);
-      // palloc_free_page (prev);
+      palloc_free_page (prev);
     }
 }
 
@@ -726,58 +582,3 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
-
-
-//if ready_list's the highest priority is bigger than current thread's priority, then yield
-void thread_preepmt (void)
-{
-  if (!list_empty (&ready_list) && list_entry (list_front (&ready_list), struct thread, elem)->priority > thread_current()->priority){
-    thread_yield();
-  };
-}
-
-//block list wake up
-void thread_alarm (int64_t ticks)
-{
-  int64_t start = timer_ticks();
-  
-  struct list_elem * i;
-  struct thread *t;
-
-  for(i = list_begin(&block_list); i!=list_end(&block_list); ){
-
-    t = list_entry(i, struct thread, elem);
-    i = list_next(i); //제거 되기 전에 i 다음걸로 돌리기
-
-    if(start >= t->alarm_ticks){
-      //block list에서 제거
-      list_remove(&t->elem);
-
-      //unblock
-      enum intr_level old_level = intr_disable();
-      thread_unblock(t);
-      intr_set_level (old_level);
-    }
-  }
-
-}
-
-//block list add and sleep
-void thread_sleep (int64_t ticks){
-
-  int64_t start = timer_ticks ();
-  ASSERT (intr_get_level () == INTR_ON);
-
-  if(thread_current()!=idle_thread){
-    //thread sleep (blocking) and add to block_list
-    thread_current ()->alarm_ticks = start + ticks;
-    list_insert_ordered (&block_list, &thread_current()->elem, compare_alarm_ticks, NULL); 
-
-    //thread_block
-    enum intr_level old_level = intr_disable ();
-    thread_block ();
-    intr_set_level (old_level);
-  }
-
-}
-

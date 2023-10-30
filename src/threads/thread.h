@@ -4,8 +4,6 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include "synch.h"
-#include <hash.h>
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -94,17 +92,12 @@ struct thread
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    
-    int64_t alarm_ticks; //blocked, then wake up after alarm_ticks
-    int original_priority;                  // priority before donation
-    int nice;
-    int recent_cpu;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-
 #endif
+
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
@@ -144,21 +137,5 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
-
-//added
-bool compare_alarm_ticks (struct list_elem *a, struct list_elem *b, void *aux UNUSED);
-bool compare_priority (struct list_elem *a, struct list_elem *b, void *aux UNUSED);
-
-void thread_alarm (int64_t ticks);
-void thread_sleep (int64_t ticks);
-void thread_preepmt (void);
-
-void mlfqs_thread_set_priority (struct thread *t);
-void mlfqs_thread_set_recent_cpu (struct thread *t);
-
-void mlfqs_thread_set_load_avg (void);
-void mlfqs_thread_update_load_avg (void);
-void mlfqs_thread_set_all_recent_cpu (void);
-void mlfqs_thread_set_all_priority (void);
 
 #endif /* threads/thread.h */
