@@ -15,18 +15,18 @@
 #include "devices/timer.h"
 
 void
-test_mlfqs_load_1 (void) 
+test_mlfqs_load_1 (void)
 {
   int64_t start_time;
   int elapsed;
   int load_avg;
-  
+
   ASSERT (thread_mlfqs);
 
   msg ("spinning for up to 45 seconds, please wait...");
 
   start_time = timer_ticks ();
-  for (;;) 
+  for (;;)
     {
       load_avg = thread_get_load_avg ();
       ASSERT (load_avg >= 0);
@@ -37,8 +37,9 @@ test_mlfqs_load_1 (void)
               load_avg / 100, load_avg % 100, elapsed);
       else if (load_avg > 50)
         break;
-      else if (elapsed > 45)
+      else if (elapsed > 45){
         fail ("load average stayed below 0.5 for more than 45 seconds");
+      }
     }
 
   if (elapsed < 38)

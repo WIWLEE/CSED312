@@ -464,9 +464,18 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
 
+  //thread to child list
+  list_init(&t->child_threads); 
+  list_push_back(&running_thread()->child_threads, &t->child_elem);
+
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
+
+  //for project2
+  t->already_waiting = false;
+  sema_init(&t->parent_is_waiting, 0);
+  sema_init(&t->waiting_for_child, 0);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

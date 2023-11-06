@@ -4,6 +4,9 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -97,6 +100,17 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
 #endif
+    int exit_status;
+    struct file* file_descriptor[128];
+
+    struct list child_threads;
+    struct list_elem child_elem;
+ 
+    bool already_waiting;
+    struct semaphore parent_is_waiting; // parent가 기다리고 있는지를 알려준다.
+    struct semaphore waiting_for_child;
+    
+    struct thread *parent;
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
