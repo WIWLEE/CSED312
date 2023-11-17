@@ -11,6 +11,7 @@
 #include "filesys/fsutil.h"
 #include "filesys/inode.h"
 #include "filesys/off_t.h"
+#include "vm/page.h"
 
 struct fd_elem {
   int fd;
@@ -37,5 +38,8 @@ void sys_write (struct intr_frame * f);
 void sys_seek (struct intr_frame * f);
 void sys_tell (struct intr_frame * f);
 void sys_close (struct intr_frame * f);
+void sys_mmap(struct intr_frame * f);
+void sys_munmap(struct intr_frame * f);
+void do_munmmap(struct mmap_file* m);
 
 #endif /* userprog/syscall.h */

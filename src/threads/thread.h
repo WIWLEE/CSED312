@@ -3,6 +3,7 @@
 
 #include <debug.h>
 #include <list.h>
+#include <hash.h>
 #include <stdint.h>
 
 /* States in a thread's life cycle. */
@@ -93,7 +94,6 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
-#ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
 
@@ -105,7 +105,11 @@ struct thread
     struct list fd_table;
 
     struct file *current_file;
-#endif
+
+    struct hash* vm;
+    struct list mmap_list;
+    int current_map_id;
+    void *user_esp;
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */

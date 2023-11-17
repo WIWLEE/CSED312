@@ -16,18 +16,18 @@ int send_signal(int content, enum signal_type sig_type) {
   struct thread *dest_thread = cur->parent;
   struct signal *sig;
   struct list_elem *e;
-  
+
   if(dest_thread == NULL) return -1;
-  
+
   //printf("sending signal from %d to %d, %d, %d\n", cur->tid, dest_thread->tid, content, sig_type);
-  
+
   lock_acquire(&sig_lock);
-  
+
   for (e = list_begin (&dest_thread->signal_list);
        e != list_end (&dest_thread->signal_list);
        e = list_next (e)) {
     sig = list_entry (e, struct signal, elem);
-    if(sig->source == cur->tid && sig->dest == dest_thread->tid && 
+    if(sig->source == cur->tid && sig->dest == dest_thread->tid &&
        sig->sig_type == sig_type) {
       if(sig->sig_status != SIG_RECV) {
         lock_release(&sig_lock);
@@ -48,7 +48,7 @@ int send_signal(int content, enum signal_type sig_type) {
   sig->sig_type = sig_type;
   sig->sig_status = SIG_WRITE;
   list_push_back(&dest_thread->signal_list, &sig->elem);
-  
+
   lock_release(&sig_lock);
   thread_yield();
   return 0;
@@ -61,11 +61,11 @@ int get_signal(pid_t source, enum signal_type sig_type) {
   struct signal *sig;
   struct thread *t;
   struct list_elem *e;
-  
+
   //printf("%d receiving signal from %d, %d\n", cur->tid, source, sig_type);
-  
+
   lock_acquire(&sig_lock);
-  
+
   for (e = list_begin (&cur->signal_list); e != list_end (&cur->signal_list);
        e = list_next (e)) {
     sig = list_entry (e, struct signal, elem);
@@ -80,10 +80,10 @@ int get_signal(pid_t source, enum signal_type sig_type) {
       return result;
     }
   }
-  
-  for (e = list_begin (&cur->child_list); e != list_end (&cur->child_list); 
+
+  for (e = list_begin (&cur->child_list); e != list_end (&cur->child_list);
        e = list_next(e))
-  { 
+  {
     t = list_entry (e, struct thread, p_elem);
     if(t->tid == source) {
       sig = (struct signal*)malloc(sizeof(struct signal));
@@ -93,20 +93,21 @@ int get_signal(pid_t source, enum signal_type sig_type) {
       sig->sig_type = sig_type;
       sig->sig_status = SIG_RECV;
       list_push_back(&cur->signal_list, &sig->elem);
-      
       lock_release(&sig_lock);
       while(sig->sig_status != SIG_DONE) {
         thread_yield();
       }
+
       lock_acquire(&sig_lock);
-      
+
+
       result = sig->content;
       list_remove(&sig->elem);
       free(sig);
       break;
     }
   }
-  
+
   lock_release(&sig_lock);
   thread_yield();
   return result;

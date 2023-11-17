@@ -8,6 +8,9 @@
 #include "userprog/process.h"
 #include "threads/malloc.h"
 #include "threads/vaddr.h"
+#include "userprog/exception.h"
+#include "vm/vm.h"
+#include "vm/page.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -30,8 +33,39 @@ static void (*syscall_table[20])(struct intr_frame*) = {
   sys_write,
   sys_seek,
   sys_tell,
-  sys_close
+  sys_close,
+  sys_mmap,
+  sys_munmap
 }; // syscall jmp table
+
+
+bool check_valid_buffer(void* buffer, unsigned size, void* esp, bool to_write){
+  int i;
+  for(i = 0; i < size; i ++){
+    if(!is_user_vaddr(buffer + i) || buffer + i < (void *)0x08048000UL)
+      return false;
+
+    struct vm_entry* vme = find_vme(buffer + i);
+    if(vme == NULL){
+      int32_t addr_compare = (int32_t)(void*)(buffer + i);
+      if(is_user_vaddr (addr_compare) && esp - (void*)(addr_compare) <= 32 && 0xC0000000UL - addr_compare <= 8 * 1024 * 1024){
+        expand_stack(buffer + i);
+        vme = find_vme(buffer+i);
+      }
+      else{
+        return false;
+      }
+    }
+    if(to_write && !vme->writable){
+      return false;
+    }
+    if(!vme->is_loaded)
+      handle_mm_fault(vme);
+
+  }
+  return true;
+
+}
 
 /* Reads a byte at user virtual address UADDR.
   UADDR must be below PHYS_BASE.
@@ -101,21 +135,22 @@ void kill_process() {
 }
 
 void
-syscall_init (void) 
+syscall_init (void)
 {
   lock_init(&file_lock);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
 static void
-syscall_handler (struct intr_frame *f) 
-{ 
+syscall_handler (struct intr_frame *f)
+{
   int syscall_num = validate_read(f->esp, 4) ? *(int*)(f->esp) : -1;
-  
+
+
   if(syscall_num < 0 || syscall_num >= 20) {
     kill_process();
   }
-  
+
   (syscall_table[syscall_num])(f);
 }
 
@@ -127,14 +162,14 @@ void sys_halt (struct intr_frame * f UNUSED) {
 // void exit(int status)
 void sys_exit (struct intr_frame * f) {
   int status;
-  
+
   if(!validate_read(f->esp + 4, 4)) kill_process();
-  
+
   status = *(int*)(f->esp + 4);
 
   send_signal(status, SIG_WAIT);
   printf ("%s: exit(%d)\n", thread_current()->name, status);
-  thread_exit();  
+  thread_exit();
 }
 
 // pid_t exec(const char *cmd_line)
@@ -142,19 +177,19 @@ void sys_exec (struct intr_frame * f) {
   char *cmd_line;
   pid_t pid;
   char *itr;
-  
+
   if(!validate_read(f->esp + 4, 4)) kill_process();
-  
+
   cmd_line = *(char**)(f->esp + 4);
   itr = cmd_line;
-  
+
   if(!validate_read((void*)cmd_line, 1)) kill_process();
-  
+
   while(*itr != '\0') {
     itr++;
     if(!validate_read((void*)itr, 1)) kill_process();
   }
-  
+
   pid = process_execute(cmd_line);
   f->eax = pid == -1 ? pid : get_signal(pid, SIG_EXEC);
 }
@@ -162,9 +197,9 @@ void sys_exec (struct intr_frame * f) {
 // int wait (pid_t pid)
 void sys_wait (struct intr_frame * f) {
   if(!validate_read(f->esp + 4, 4)) kill_process();
-  
+
   pid_t pid = *(pid_t*)(f->esp + 4);
-  
+
   f->eax = process_wait(pid);
 }
 
@@ -173,21 +208,21 @@ void sys_create (struct intr_frame * f) {
   char *name;
   unsigned initial_size;
   char *itr;
-  
+
   if(!validate_read(f->esp + 4, 8)) kill_process();
-  
+
   name = *(char **)(f->esp + 4);
   initial_size = *(unsigned*)(f->esp + 8);
   itr = name;
-  
+
   if(!validate_read((void*)name, 1)) kill_process();
 
   while(*itr != '\0') {
-    itr++;
     if(!validate_read((void*)itr, 1)) kill_process();
+      itr++;
   }
 
-  lock_acquire(&file_lock);  
+  lock_acquire(&file_lock);
   f->eax = filesys_create(name, initial_size);
   lock_release(&file_lock);
 }
@@ -196,19 +231,19 @@ void sys_create (struct intr_frame * f) {
 void sys_remove (struct intr_frame * f) {
   char *name;
   char *itr;
-  
+
   if(!validate_read(f->esp + 4, 4)) kill_process();
-  
+
   name = *(char **)(f->esp + 4);
   itr = name;
-  
+
   if(!validate_read((void*)name, 1)) kill_process();
 
   while(*itr != '\0') {
-    itr++;
     if(!validate_read((void*)itr, 1)) kill_process();
+      itr++;
   }
-  
+
   lock_acquire(&file_lock);
   f->eax = filesys_remove(name);
   lock_release(&file_lock);
@@ -223,7 +258,7 @@ void sys_open (struct intr_frame * f) {
   struct list_elem *e;
   struct fd_elem *f_elem;
   struct fd_elem *fd_elem;
-  
+
   if(!validate_read(f->esp + 4, 4)) kill_process();
 
   name = *(char **)(f->esp + 4);
@@ -232,19 +267,19 @@ void sys_open (struct intr_frame * f) {
   if(!validate_read((void*)name, 1)) kill_process();
 
   while(*itr != '\0') {
-    itr++;
     if(!validate_read((void*)itr, 1)) kill_process();
+    itr++;
   }
-  
+
   if(itr == name) {
     f->eax = -1;
     return;
   }
-  
+
   t = thread_current();
   file = filesys_open(name); //if fails, it returns NULL
   f_elem = malloc(sizeof(struct fd_elem));
-  
+
   if(file == NULL) {
     f->eax = -1;
     return;
@@ -273,14 +308,14 @@ void sys_open (struct intr_frame * f) {
 void sys_filesize (struct intr_frame * f) {
   int fd;
   struct file *file;
-  
+
   if(!validate_read(f->esp + 4, 4)) kill_process();
-  
+
   fd = *(int*)(f->esp + 4);
   file = get_file_from_fd(fd);
-  
+
   if(file == NULL) f->eax = -1;
-  
+
   f->eax = file_length(file);
 }
 
@@ -292,16 +327,17 @@ void sys_read (struct intr_frame * f) {
   uint8_t* buffer;
   unsigned size;
   struct file *file;
-  
+
   if(!validate_read(f->esp + 4, 12)) kill_process();
-  
+
   fd = *(int*)(f->esp + 4);
   buffer = *(uint8_t**)(f->esp + 8);
   size = *(unsigned*)(f->esp + 12);
-  file = get_file_from_fd(fd); 
-  
+  if(!check_valid_buffer(buffer, size, f->esp, true)) kill_process();
+
+  file = get_file_from_fd(fd);
+
   if(!validate_write(buffer, size)) kill_process();
-  
   if(fd == 0) {
     c = input_getc();
     while(c != '\n' && c != -1 && count < size) {
@@ -320,6 +356,7 @@ void sys_read (struct intr_frame * f) {
       f->eax = -1;
       return;
     }
+
     lock_acquire(&file_lock);
     f->eax = file_read(file, buffer, size);
     lock_release(&file_lock);
@@ -332,18 +369,19 @@ void sys_write (struct intr_frame * f) {
   char* buffer;
   unsigned size;
   struct file *file;
-  
+
   if(!validate_read(f->esp + 4, 12)) kill_process();
-  
+
   fd = *(int*)(f->esp + 4);
   buffer = *(char**)(f->esp + 8);
   size = *(unsigned*)(f->esp + 12);
   file = get_file_from_fd(fd);
-  
+  if(!check_valid_buffer(buffer, size, f->esp, false)) kill_process();
+
   if(!validate_read(buffer, size)) kill_process();
-  
+
   if(fd == 0) {
-    f->eax = 0; 
+    f->eax = 0;
   }
   else if(fd == 1) {
     putbuf(buffer, size);
@@ -365,15 +403,15 @@ void sys_seek (struct intr_frame * f) {
   int fd;
   off_t position;
   struct file *file;
-  
+
   if(!validate_read(f->esp + 4, 8)) kill_process();
-  
+
   fd = *(int*)(f->esp + 4);
   position = *(int*)(f->esp + 8);
-  file = get_file_from_fd(fd);  
-  
+  file = get_file_from_fd(fd);
+
   if(file == NULL) f->eax = -1;
-  
+
   lock_acquire(&file_lock);
   file_seek(file, position);
   lock_release(&file_lock);
@@ -398,17 +436,17 @@ void sys_close (struct intr_frame * f) {
   struct thread *t;
   struct list_elem *e;
   struct fd_elem *fd_elem;
-  
+
   if(!validate_read(f->esp + 4, 4)) kill_process();
-  
+
   fd = *(int*)(f->esp + 4);
   file = get_file_from_fd(fd);
   t = thread_current();
-    
+
   lock_acquire(&file_lock);
   file_close(file);
   lock_release(&file_lock);
-  
+
   for (e = list_begin (&t->fd_table); e != list_end (&t->fd_table);
        e = list_next (e))
   {
@@ -419,4 +457,97 @@ void sys_close (struct intr_frame * f) {
       return;
     }
   }
+}
+
+void sys_mmap (struct intr_frame * f){
+  int fd;
+  void *addr;
+  if(!validate_read(f->esp + 4, 8)) kill_process();
+  fd = *(int*)(f->esp + 4);
+  addr = *(void**)(f->esp + 8);
+  if (pg_ofs (addr) != 0 || !addr || is_user_vaddr (addr) == false){
+    f->eax = -1;
+    return;
+  }
+  struct file* file = get_file_from_fd(fd);
+  if(file == NULL){
+    f->eax = -1;
+    return;
+  }
+  struct mmap_file* m = malloc(sizeof (struct mmap_file));
+  m->mapid = thread_current()->current_map_id++;\
+  m->file = file_reopen(file);\
+  list_init(&m->vme_list);
+  if(m->file == NULL){
+    free(m);
+    f->eax = -1;
+    return;
+  }
+  list_push_back(&thread_current()->mmap_list, &m->elem);
+  off_t length = file_length(m->file);
+  size_t offset = 0;
+  while(length > 0){
+    if(find_vme(addr+offset)){
+      f->eax = -1;
+      return;
+    }
+
+    struct vm_entry * vme = vm_entry_alloc( addr + offset);
+    if (vme == NULL){
+      f->eax = -1;
+      return;
+    }
+    vme->writable = true;
+    vme->file = m->file;
+    vme->file_offset = offset;
+    vme->file_bytes = length >= PGSIZE ? PGSIZE : length;
+    vme->type = VM_FILE;
+
+    offset += vme->file_bytes;
+    length -= vme->file_bytes;
+    insert_vme(thread_current()->vm, vme);
+    list_push_back(&m->vme_list, &vme->mmap_elem);
+  }
+  f->eax = m->mapid;
+
+}
+
+void sys_munmap(struct intr_frame * f){
+  if(!validate_read(f->esp + 4, 4)) kill_process();
+  int id = *(int*)(f->esp + 4);
+  struct mmap_file* m = NULL;
+  struct list map_list = thread_current()->mmap_list;
+  struct list_elem *e;
+  for(e = list_begin(&map_list); e != list_end(&map_list); e = list_next(e)){
+    struct mmap_file* tmp = list_entry(e, struct mmap_file, elem);
+    if(tmp->mapid == id){
+      m = tmp;
+      break;
+    }
+  }
+  if(m == NULL)
+    return;
+  do_munmmap(m);
+}
+
+
+
+void do_munmmap(struct mmap_file* m){
+  struct list_elem *e;
+  for(e = list_begin(&m->vme_list); e != list_end(&m->vme_list); ){
+    struct vm_entry* vme = list_entry(e ,struct vm_entry, mmap_elem);
+    lock_acquire(&file_lock);
+    if(vme->is_loaded && pagedir_is_dirty(thread_current()->pagedir, vme->vaddr)){
+      lock_release(&file_lock);
+      file_write_at(vme->file, vme-> vaddr, vme->file_bytes, vme->file_offset);
+    }
+    else
+      lock_release(&file_lock);
+    vme->is_loaded = false;
+    e = list_remove(e);
+    delete_vme(thread_current()->vm, vme);
+  }
+  list_remove(&m->elem);
+  free(m);
+  return;
 }
