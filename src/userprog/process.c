@@ -23,6 +23,16 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool install_page (void *upage, void *kpage, bool writable);
+
+#ifdef VM
+#include "vm/frame.h"
+#endif VM
+
+#ifndef VM
+#define frame_allocate(f, u) palloc_get_page(f)
+#define frame_free(k) palloc_free_page(k)
+#endif VM
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -399,7 +409,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
   t->current_file = file;
   return success;
 }
-
 /* load() helpers. */
 
 static bool install_page (void *upage, void *kpage, bool writable);
@@ -516,14 +525,14 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+   kpage = frame_allocate(PAL_USER | PAL_ZERO, PHYS_BASE - PGSIZE);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
         *esp = PHYS_BASE;
       else
-        palloc_free_page (kpage);
+        frame_free(kpage);
     }
   return success;
 }
