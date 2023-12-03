@@ -11,13 +11,13 @@ struct lock swap_lock;
 
 void swap_init(){
   lock_init(&swap_lock);
-  swap_bitmap = bitmap_create(8 * 1024);
+  swap_bitmap = bitmap_create(8 * 1024); // 8 * 1024 만큼의 bitmap을 만든다.
 }
 
 
+//
 void swap_in(size_t used_index, void* kaddr){
   struct block *swap_device;
-  //printf("swap_in start\n");
   lock_acquire(&swap_lock);
   swap_device = block_get_role (BLOCK_SWAP);
   block_sector_t s = used_index * SECTORS_PER_PAGE;
@@ -27,13 +27,11 @@ void swap_in(size_t used_index, void* kaddr){
   }
   bitmap_set_multiple (swap_bitmap, used_index, 1, false);
   lock_release(&swap_lock);
-  //printf("swap_in end\n");
 }
 
 
 size_t swap_out(void* kaddr){
   struct block *swap_device;
-  //printf("swap_out start\n");
   lock_acquire(&swap_lock);
   swap_device = block_get_role (BLOCK_SWAP);
   size_t t = bitmap_scan_and_flip(swap_bitmap, 0, 1, false);
@@ -48,7 +46,6 @@ size_t swap_out(void* kaddr){
   }
 
   lock_release(&swap_lock);
-  //printf("swap_out end\n");
   return t;
 }
 

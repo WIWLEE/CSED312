@@ -10,7 +10,7 @@
 #include "threads/vaddr.h"
 #include "userprog/exception.h"
 #include "vm/vm.h"
-#include "vm/page.h"
+#include "vm/frame.h"
 
 static void syscall_handler (struct intr_frame *);
 

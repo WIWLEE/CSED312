@@ -4,7 +4,7 @@
 #include "threads/interrupt.h"
 #include "threads/vaddr.h"
 #include "threads/thread.h"
-#include "vm/page.h"
+#include "vm/frame.h"
 #include "vm/vm.h"
 
 /* Number of page faults processed. */

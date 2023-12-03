@@ -21,7 +21,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
-#include "vm/page.h"
+#include "vm/frame.h"
 #include "vm/swap.h"
 
 
@@ -557,27 +557,27 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp)
 {
-  struct page* page;
+  struct frame* frame;
   bool success = false;
-  page = alloc_page(PAL_USER | PAL_ZERO);
+  frame = alloc_frame(PAL_USER | PAL_ZERO);
 
 
-  if (page != NULL)
+  if (frame != NULL)
     {
-      page->vme = vm_entry_alloc(((uint8_t *) PHYS_BASE) - PGSIZE);
-      if(page->vme == NULL){
+      frame->vme = vm_entry_alloc(((uint8_t *) PHYS_BASE) - PGSIZE);
+      if(frame->vme == NULL){
         return false;
       }
-      page->vme->type = VM_ANON;
-      page->vme->writable = true;
-      insert_vme(thread_current()->vm, page->vme);
-      success = install_page (page->vme->vaddr, page->kaddr, page->vme->writable);
+      frame->vme->type = VM_ANON;
+      frame->vme->writable = true;
+      insert_vme(thread_current()->vm, frame->vme);
+      success = install_page (frame->vme->vaddr, frame->faddr, frame->vme->writable);
       if (success){
-        page->vme->is_loaded = true;
+        frame->vme->is_loaded = true;
         *esp = PHYS_BASE;
       }
       else
-        free_page (page->kaddr);
+        free_frame (frame->faddr);
   }
 
   return success;
@@ -589,41 +589,41 @@ bool handle_mm_fault(struct vm_entry* vme){
     return false;
   }
 
-  struct page* page = alloc_page(PAL_USER | PAL_ZERO);
-  page->vme = vme;
+  struct frame* frame = alloc_frame(PAL_USER | PAL_ZERO);
+  frame->vme = vme;
 
-  if (page == NULL){
+  if (frame == NULL){
     return false;
   }
 
   switch(vme->type){
     case VM_BIN:
-    success = load_file(page->kaddr, vme);
+    success = load_file(frame->faddr, vme);
     break;
     case VM_FILE:
-    success = load_file(page->kaddr, vme);
+    success = load_file(frame->faddr, vme);
     break;
     case VM_ANON:
-    swap_in(vme->used_index, page->kaddr);
+    swap_in(vme->used_index, frame->faddr);
     success = true;
     break;
   }
-  if(success && install_page(vme->vaddr, page->kaddr, vme->writable)){
+  if(success && install_page(vme->vaddr, frame->faddr, vme->writable)){
     vme->is_loaded = true;
     return true;
   }
-  free_page(page->kaddr);
+  free_frame(frame->faddr);
   return false;
 }
 
 
 /* Adds a mapping from user virtual address UPAGE to kernel
-   virtual address KPAGE to the page table.
-   If WRITABLE is true, the user process may modify the page;
+   virtual address KPAGE to the frame table.
+   If WRITABLE is true, the user process may modify the frame;
    otherwise, it is read-only.
    UPAGE must not already be mapped.
-   KPAGE should probably be a page obtained from the user pool
-   with palloc_get_page().
+   KPAGE should probably be a frame obtained from the user pool
+   with palloc_get_frame().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
 static bool
@@ -640,26 +640,26 @@ install_page (void *upage, void *kpage, bool writable)
 }
 
 void expand_stack(void* addr){
-  struct page* page;
+  struct frame* frame;
   void* vaddr = pg_round_down(addr);
-  page = alloc_page(PAL_USER | PAL_ZERO);
+  frame = alloc_frame(PAL_USER | PAL_ZERO);
   bool success;
 
 
-  if (page != NULL)
+  if (frame != NULL)
     {
-      page->vme = vm_entry_alloc(vaddr);
-      if(page->vme == NULL){
+      frame->vme = vm_entry_alloc(vaddr);
+      if(frame->vme == NULL){
         return false;
       }
-      page->vme->type = VM_ANON;
-      page->vme->writable = true;
-      insert_vme(thread_current()->vm, page->vme);
-      success = install_page (page->vme->vaddr, page->kaddr, page->vme->writable);
+      frame->vme->type = VM_ANON;
+      frame->vme->writable = true;
+      insert_vme(thread_current()->vm, frame->vme);
+      success = install_page (frame->vme->vaddr, frame->faddr, frame->vme->writable);
       if (success)
-        page->vme->is_loaded = true;
+        frame->vme->is_loaded = true;
       else
-        free_page (page->kaddr);
+        free_frame (frame->faddr);
   }
 
 }
