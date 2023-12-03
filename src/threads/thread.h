@@ -106,11 +106,10 @@ struct thread
 
     struct file *current_file;
 
-    struct hash* vm;
-    struct list mmap_list;
-    int current_map_id;
-    void *user_esp;
-
+    struct hash* vm; // vm_entry hash struct
+    struct list mmap_list; // map된 파일 리스트
+    int current_map_id; // map을 id로 관리한다
+    
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };

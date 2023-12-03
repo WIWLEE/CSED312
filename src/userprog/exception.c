@@ -149,20 +149,25 @@ page_fault (struct intr_frame *f)
   page_fault_cnt++;
 
   /* Determine cause. */
-  not_present = (f->error_code & PF_P) == 0;
+  not_present = (f->error_code & PF_P) == 0; // 물리메모리에 존재 안하는지
   write = (f->error_code & PF_W) != 0;
-  user = (f->error_code & PF_U) != 0;
+  user = (f->error_code & PF_U) != 0; // 모드
 
+  // user space page fault여야 한다.
   if(!user) {
     f->error_code = 0;
     f->eip = (void (*)(void)) f->eax;
     f->eax = -1;
     return;
   }
+
+  //user, not_present가 true인 상황에 대해 stack growth
   if(user && not_present){
     if(!check_addr((int32_t) fault_addr, f->esp)){
       kill(f);
     }
+
+    //fault_addr에 해당하는 vm_entry를 찾고, 그 값이 NULL이 아니면 stack grow
     struct vm_entry* v = find_vme(fault_addr);
     if (v != NULL){
       if(!handle_mm_fault(v)){

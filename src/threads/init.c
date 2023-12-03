@@ -99,7 +99,11 @@ main (void)
   palloc_init (user_page_limit);
   malloc_init ();
   paging_init ();
+
+  // frame table list init
   frame_list_init();
+
+  // swap bitmap init
   swap_init();
 
   /* Segmentation. */

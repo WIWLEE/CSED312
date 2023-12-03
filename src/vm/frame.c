@@ -16,13 +16,16 @@ struct lock frame_list_lock;
 struct list_elem* frame_clock;
 int iter;
 
+//vme->file(파일)에서 faddr(버퍼)로 파일을 읽어온다.
+//read_bytes와 zero_bytes의 합이 PGSIZE가 되게끔 조정해 준다.
 bool load_file(void *faddr, struct vm_entry* vme){
-  off_t read_bytes = file_read_at (vme->file, faddr, vme->file_bytes, vme->file_offset);
+  off_t read_bytes = file_read_at (vme->file, faddr, vme->file_bytes, vme->file_offset); 
   off_t zero_bytes = PGSIZE - read_bytes;
   memset(faddr + read_bytes, 0, zero_bytes);
   return read_bytes == (int)vme->file_bytes;
 }
 
+//frame table을 initialization한다.
 void frame_list_init (){
   list_init(&frame_list);
   lock_init(&frame_list_lock);
@@ -30,31 +33,34 @@ void frame_list_init (){
   frame_clock = NULL;
 }
 
+//frame을 frame table에 추가한다.
 void add_frame_to_frame_list(struct frame* frame){
   lock_acquire(&frame_list_lock);
   list_push_back(&frame_list, &frame->elem);
   lock_release(&frame_list_lock);
 }
 
+//frame을 frame table에서 지운다.
 void del_frame_from_frame_list(struct frame* frame){
   lock_acquire(&frame_list_lock);
   list_remove(&frame->elem);
   lock_release(&frame_list_lock);
 }
 
+//frame을 alloc한다. flags는 PAL_ZERO, PAL_USER 등이다.
 struct frame* alloc_frame(enum palloc_flags flags){
   void* faddr = palloc_get_page(flags);
-  //printf("alloc_frame start!\n");
-  struct frame* p = malloc(sizeof *p);
+  struct frame* p = malloc(sizeof *p); //frame의 크기만큼 할당한다.
   if(p == NULL){
     return NULL;
   }
   while(faddr == NULL){
-    //pinned add later
+    
     struct list_elem *e = get_next_frame_clock();
     frame_clock = list_next(e);
-    struct frame* p_ = list_entry(e, struct frame, elem);
-    //demand paging
+    struct frame* p_ = list_entry(e, struct frame, elem); // frame list에서 e 위치에 있는 frame을 가져온다
+
+    //demand paging을 시행한다.
     switch(p_->vme->type){
       case VM_BIN:
         if(pagedir_is_dirty(thread_current()->pagedir, p_->vme->vaddr)){
@@ -81,7 +87,6 @@ struct frame* alloc_frame(enum palloc_flags flags){
   p->thread = thread_current();
 
   add_frame_to_frame_list(p);
-  //printf("alloc_frame end!\n");
   return p;
 }
 
@@ -91,8 +96,8 @@ void free_frame(void *faddr){
   for (e = list_begin(&frame_list); e != list_end(&frame_list); e = list_next(e)){
     struct frame* p = list_entry(e, struct frame, elem);
     if(p->faddr == faddr){
-      pagedir_clear_page(p->thread->pagedir, p->vme->vaddr);
-      del_frame_from_frame_list(p);
+      pagedir_clear_page(p->thread->pagedir, p->vme->vaddr); // page directory에서도 지운다. (해당 thread의 pagedir에서)
+      del_frame_from_frame_list(p); // 프레임 리스트에서도 지운다
       palloc_free_page(p->faddr);
       free(p);
       return;
@@ -100,6 +105,7 @@ void free_frame(void *faddr){
   }
 }
 
+// frame들의 list를 타고 쭉 진행되는 함수이다. 
 static struct list_elem* get_next_frame_clock(){
   if(frame_clock == NULL){
     return list_begin(&frame_list);

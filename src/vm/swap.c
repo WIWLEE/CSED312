@@ -15,21 +15,24 @@ void swap_init(){
 }
 
 
-//
+// page fault가 발생할 때, swap disk의 page를 새 frame에 할당한다.
+// block.h의 block structure를 활용한다. 
+// 
 void swap_in(size_t used_index, void* kaddr){
   struct block *swap_device;
   lock_acquire(&swap_lock);
   swap_device = block_get_role (BLOCK_SWAP);
   block_sector_t s = used_index * SECTORS_PER_PAGE;
   int i;
-  for(i = 0; i < SECTORS_PER_PAGE; i++){
+  for(i = 0; i < SECTORS_PER_PAGE; i++){ // swap_device를 읽는다.
     block_read(swap_device, s + i, kaddr + i * BLOCK_SECTOR_SIZE);
   }
+  // bitmap을 setting한다.
   bitmap_set_multiple (swap_bitmap, used_index, 1, false);
   lock_release(&swap_lock);
 }
-
-
+ 
+// 선택한 evicting page를 swap disk로 복사하여 free frame을 얻는다.
 size_t swap_out(void* kaddr){
   struct block *swap_device;
   lock_acquire(&swap_lock);
@@ -51,6 +54,6 @@ size_t swap_out(void* kaddr){
 
 void swap_set(size_t index){
   lock_acquire(&swap_lock);
-  bitmap_set_multiple(swap_bitmap, index, 1, false);
+  bitmap_set_multiple(swap_bitmap, index, 1, false); // index 비트를 false로 설정함
   lock_release(&swap_lock);
 }

@@ -131,7 +131,6 @@ start_process (void *file_name_)
   *(int*)(*esp) = argc;
   *esp -= sizeof(void*);
   *(void**)(*esp) = NULL; // fake ret
-  thread_current()->user_esp = esp;
 
   //hex_dump((uintptr_t)*esp, *esp,PHYS_BASE - (uintptr_t)*esp, true);
 
@@ -495,6 +494,8 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
 
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
+
+//파일의 세그먼트를 프로세스 가상 주소공간에 탑재하는 함수
 static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
               uint32_t read_bytes, uint32_t zero_bytes, bool writable)
@@ -531,6 +532,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       //    palloc_free_page (kpage);
       //    return false;
       //  }
+
+      //원래 있던 페이지 할당, 데이터 로드, 페이지 테이블 설정(Install_page) 부분 변경
+      //Virtual memory에 탑재하는 부분을 제거 -> vm_entry 구조체의 할당, 초기화, hash table insert를 추가한다. (즉, demand paging을 위함)
       struct vm_entry* v = vm_entry_alloc(upage);
       if (v == NULL)
         return false;
@@ -554,6 +558,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
+
+// 스택 초기화 함수, 스택에 물리 프레임을 할당한다. -> 물리 메모리를 할당하는 대신 가상 페이지마다 vm_entry를 통해 적재할 정보들만 관리한다.
 static bool
 setup_stack (void **esp)
 {
@@ -583,12 +589,14 @@ setup_stack (void **esp)
   return success;
 }
 
+//page fault handler
 bool handle_mm_fault(struct vm_entry* vme){
   bool success = false;
   if(vme == NULL){
     return false;
   }
 
+  //frame을 할당한다.
   struct frame* frame = alloc_frame(PAL_USER | PAL_ZERO);
   frame->vme = vme;
 
@@ -596,6 +604,7 @@ bool handle_mm_fault(struct vm_entry* vme){
     return false;
   }
 
+  // vme type에 따라 binary나 memory_mapped file인 경우 load_file, anonymous인 경우 swap_in 진행
   switch(vme->type){
     case VM_BIN:
     success = load_file(frame->faddr, vme);
@@ -608,6 +617,8 @@ bool handle_mm_fault(struct vm_entry* vme){
     success = true;
     break;
   }
+
+  // 해당 프레임을 vme와 연결 -> install_page
   if(success && install_page(vme->vaddr, frame->faddr, vme->writable)){
     vme->is_loaded = true;
     return true;
@@ -639,8 +650,11 @@ install_page (void *upage, void *kpage, bool writable)
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
 
+//stack growth 구현
 void expand_stack(void* addr){
   struct frame* frame;
+
+  //주소의 시작점 확인 -> pg_round_down, 메모리를 할당한다.
   void* vaddr = pg_round_down(addr);
   frame = alloc_frame(PAL_USER | PAL_ZERO);
   bool success;
@@ -648,6 +662,7 @@ void expand_stack(void* addr){
 
   if (frame != NULL)
     {
+      //해당 frame에 vme를 할당하고 초기화, hash insert
       frame->vme = vm_entry_alloc(vaddr);
       if(frame->vme == NULL){
         return false;

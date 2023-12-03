@@ -38,15 +38,22 @@ static void (*syscall_table[20])(struct intr_frame*) = {
   sys_munmap
 }; // syscall jmp table
 
-
+//해당 포인터의 size만큼이 valid한지를 확인
 bool check_valid_buffer(void* buffer, unsigned size, void* esp, bool to_write){
   int i;
   for(i = 0; i < size; i ++){
+    //user vaddr 내부인지
     if(!is_user_vaddr(buffer + i) || buffer + i < (void *)0x08048000UL)
       return false;
 
+    //vme가 null일 떄
     struct vm_entry* vme = find_vme(buffer + i);
     if(vme == NULL){
+      //확장해야 하는 조건
+      //stack의 시작 지점은 PHYS_BASE로 지정 
+      //grow할 수 있는 stack의 max limit가 8MB이므로 PHYS_BASE – 8*1024*1024 보다 address가 작다면 이는 늘릴 수 있는 stack의 한도를 넘은 것
+      //또한 현재 esp보다 32 byte 이하로 내려가면 안 된다
+      //조건이 맞으면 stack 확장
       int32_t addr_compare = (int32_t)(void*)(buffer + i);
       if(is_user_vaddr (addr_compare) && esp - (void*)(addr_compare) <= 32 && 0xC0000000UL - addr_compare <= 8 * 1024 * 1024){
         expand_stack(buffer + i);
@@ -56,9 +63,12 @@ bool check_valid_buffer(void* buffer, unsigned size, void* esp, bool to_write){
         return false;
       }
     }
+
+    //write 함수 검증에 사용되는데 Writable하지 않으면 안된다.
     if(to_write && !vme->writable){
       return false;
     }
+    //physical memory에 로드 되어있지 않으면 page fault handler 함수 호출
     if(!vme->is_loaded)
       handle_mm_fault(vme);
 
@@ -333,6 +343,8 @@ void sys_read (struct intr_frame * f) {
   fd = *(int*)(f->esp + 4);
   buffer = *(uint8_t**)(f->esp + 8);
   size = *(unsigned*)(f->esp + 12);
+
+  //valid buffer확인
   if(!check_valid_buffer(buffer, size, f->esp, true)) kill_process();
 
   file = get_file_from_fd(fd);
@@ -376,6 +388,8 @@ void sys_write (struct intr_frame * f) {
   buffer = *(char**)(f->esp + 8);
   size = *(unsigned*)(f->esp + 12);
   file = get_file_from_fd(fd);
+
+  //valid buffer 확인
   if(!check_valid_buffer(buffer, size, f->esp, false)) kill_process();
 
   if(!validate_read(buffer, size)) kill_process();
@@ -465,33 +479,43 @@ void sys_mmap (struct intr_frame * f){
   if(!validate_read(f->esp + 4, 8)) kill_process();
   fd = *(int*)(f->esp + 4);
   addr = *(void**)(f->esp + 8);
+  // 매개변수로 들어오는 intr_frame에서 fd와 addr을 구하여 값의 유효성을 확인한다.
+
   if (pg_ofs (addr) != 0 || !addr || is_user_vaddr (addr) == false){
     f->eax = -1;
     return;
-  }
-  struct file* file = get_file_from_fd(fd);
+  } // 유효하지 않으면 리턴
+
+
+  struct file* file = get_file_from_fd(fd); // 원하는 파일을 찾는다.
   if(file == NULL){
     f->eax = -1;
     return;
   }
+
+  //mmap_file* m에 malloc을 통해서 할당하고, 파일을 m에 집어넣는다.
   struct mmap_file* m = malloc(sizeof (struct mmap_file));
-  m->mapid = thread_current()->current_map_id++;\
-  m->file = file_reopen(file);\
-  list_init(&m->vme_list);
+
+  m->mapid = thread_current()->current_map_id++; // 매핑을 ID로 관리한다. 
+  m->file = file_reopen(file);
+  list_init(&m->vme_list); //m의 vme_list를 초기화한다.
   if(m->file == NULL){
     free(m);
     f->eax = -1;
     return;
   }
+
   list_push_back(&thread_current()->mmap_list, &m->elem);
   off_t length = file_length(m->file);
   size_t offset = 0;
+
   while(length > 0){
     if(find_vme(addr+offset)){
       f->eax = -1;
       return;
     }
 
+    //vme를 생성하고, 초기화 시킨다.
     struct vm_entry * vme = vm_entry_alloc( addr + offset);
     if (vme == NULL){
       f->eax = -1;
@@ -506,7 +530,7 @@ void sys_mmap (struct intr_frame * f){
     offset += vme->file_bytes;
     length -= vme->file_bytes;
     insert_vme(thread_current()->vm, vme);
-    list_push_back(&m->vme_list, &vme->mmap_elem);
+    list_push_back(&m->vme_list, &vme->mmap_elem); // vme list에 넣어서 매핑한다.
   }
   f->eax = m->mapid;
 
@@ -516,8 +540,10 @@ void sys_munmap(struct intr_frame * f){
   if(!validate_read(f->esp + 4, 4)) kill_process();
   int id = *(int*)(f->esp + 4);
   struct mmap_file* m = NULL;
-  struct list map_list = thread_current()->mmap_list;
+  struct list map_list = thread_current()->mmap_list; // 현재 thread의 mmap_list
   struct list_elem *e;
+
+  //unmap할 파일을 찾기
   for(e = list_begin(&map_list); e != list_end(&map_list); e = list_next(e)){
     struct mmap_file* tmp = list_entry(e, struct mmap_file, elem);
     if(tmp->mapid == id){
@@ -527,22 +553,28 @@ void sys_munmap(struct intr_frame * f){
   }
   if(m == NULL)
     return;
-  do_munmmap(m);
+  do_munmmap(m); // 실제 munmap 실행
 }
 
 
 
 void do_munmmap(struct mmap_file* m){
   struct list_elem *e;
+
+  //mmap_file* m의 vme_list를 탐색
   for(e = list_begin(&m->vme_list); e != list_end(&m->vme_list); ){
     struct vm_entry* vme = list_entry(e ,struct vm_entry, mmap_elem);
     lock_acquire(&file_lock);
+
+    //dirty 하니까 write 해주고
     if(vme->is_loaded && pagedir_is_dirty(thread_current()->pagedir, vme->vaddr)){
       lock_release(&file_lock);
       file_write_at(vme->file, vme-> vaddr, vme->file_bytes, vme->file_offset);
     }
     else
       lock_release(&file_lock);
+
+    //remove 해준다.
     vme->is_loaded = false;
     e = list_remove(e);
     delete_vme(thread_current()->vm, vme);

@@ -5,33 +5,35 @@
 #include <hash.h>
 #include <list.h>
 
-#define VM_BIN 0
-#define VM_FILE 1
-#define VM_ANON 2
+// Virtual Memory Page 3 Type
+#define VM_BIN 0 // 바이너리 파일로부터 데이터를 로드
+#define VM_FILE 1 // 파일로부터 데이터를 로드
+#define VM_ANON 2 // 스왑 영역으로부터 데이터를 로드
 
+// vm_entry -> Supplement page struct
 struct vm_entry{
-  bool writable;
+  bool writable; 
   int type;
-  void *vaddr;
+  void *vaddr; // virtual address
 
-  struct thread* thread;
-  struct file* file;
+  struct thread* thread; // owner thread
+  struct file* file; // 매핑된 파일과 offset, bytes
   off_t file_offset;
   off_t file_bytes;
 
-  size_t used_index;
+  size_t used_index; // 스왑 슬롯 인덱스
 
   struct hash_elem elem;
   struct list_elem mmap_elem;
-  bool is_loaded;
+  bool is_loaded; // physical memory에 탑재되어 있는지
 };
 
 // file mapping을 위한 structure
 struct mmap_file{
-  int mapid;
-  struct file* file;
-  struct list_elem elem;
-  struct list vme_list;
+  int mapid; // mapping id
+  struct file* file; // 매핑 파일
+  struct list_elem elem; // mmap_file list -> 헤드는 struct thread
+  struct list vme_list; // mmap_file에 해당하는 vm_entry list
 };
 
 
