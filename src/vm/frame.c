@@ -14,7 +14,6 @@
 struct list frame_list;
 struct lock frame_list_lock;
 struct list_elem* frame_clock;
-int iter;
 
 //vme->file(파일)에서 faddr(버퍼)로 파일을 읽어온다.
 //read_bytes와 zero_bytes의 합이 PGSIZE가 되게끔 조정해 준다.
@@ -29,7 +28,6 @@ bool load_file(void *faddr, struct vm_entry* vme){
 void frame_list_init (){
   list_init(&frame_list);
   lock_init(&frame_list_lock);
-  iter = 0;
   frame_clock = NULL;
 }
 
@@ -54,20 +52,24 @@ struct frame* alloc_frame(enum palloc_flags flags){
   if(p == NULL){
     return NULL;
   }
+
+  //free physical memory가 없으면 eviction 및 재할당
   while(faddr == NULL){
     
     struct list_elem *e = get_next_frame_clock();
     frame_clock = list_next(e);
     struct frame* p_ = list_entry(e, struct frame, elem); // frame list에서 e 위치에 있는 frame을 가져온다
 
+    //frame allocation 시 evict 되는 부분
     //demand paging을 시행한다.
     switch(p_->vme->type){
-      case VM_BIN:
+      case VM_BIN: // dirty bit가 1이면 스왑 파티션에 기록한 후 페이지를 해제
+        // 페이지를 해제한 후 요구 페이징을 위해 타입을 VM_ANON으로 변경
         if(pagedir_is_dirty(thread_current()->pagedir, p_->vme->vaddr)){
           p_->vme->used_index = swap_out(p_->faddr);
           p_->vme->type = VM_ANON;
         }
-        break;
+        break; // dirty bit가 1이면 파일에 변경 내용을 저장한 후 페이지를 해제, dirty bit가 0이면 바로 페이지를 해제
       case VM_FILE:
         if(pagedir_is_dirty(thread_current()->pagedir, p_->vme->vaddr)){
           lock_acquire(&frame_list_lock);
@@ -75,10 +77,11 @@ struct frame* alloc_frame(enum palloc_flags flags){
           lock_release(&frame_list_lock);
         }
         break;
-      case VM_ANON:
+      case VM_ANON: // 항상 스왑 파티션에 기록
         p_->vme->used_index = swap_out(p_->faddr);
         break;
     }
+    //eviction되었으니 loaded false만들고 frame도 free시킨다. 
     p_->vme->is_loaded = false;
     free_frame(p_->faddr);
     faddr = palloc_get_page(flags);
@@ -86,6 +89,7 @@ struct frame* alloc_frame(enum palloc_flags flags){
   p->faddr = faddr;
   p->thread = thread_current();
 
+  //frame table에 할당한 Frame 추가하기
   add_frame_to_frame_list(p);
   return p;
 }

@@ -195,6 +195,7 @@ process_exit (void)
     file_close(f_e->file_ptr);
     free(f_e);
   }
+  //현재 스레드에 mmap file이 있으면 do_munmap 실행하고, vm_destroy 실행해서 S-page table entry도 없애줘야한다. 
   int mapid;
   struct mmap_file* m;
   for (mapid = 1; mapid < cur->current_map_id; mapid++){
